@@ -156,8 +156,12 @@ handle_cast({make_landing, Plane, _LS, From}, LandingStrip) ->
     %%
     %% Code to fill in %%
     %%
+    timer:sleep(3000),
     io:format("[TOWER] Plane ~p landed, freeing up runway ~p ~n", [Plane#plane.flight_number, LandingStrip#landing_strip.id]),
-    {noreply, LandingStrip}.
+    LandingStripFreed = LandingStrip#landing_strip{free = true},
+    {PlanePID, _} = From,
+    plane:rest(PlanePID),
+    {noreply, LandingStripFreed}.
     %% ------------ %%
 
 
@@ -172,6 +176,7 @@ handle_call({land_plane, Plane, _LS}, From, LandingStrip) ->
     %% ------------ %%
     io:format("[TOWER] Plane ~p approaching runway ~p ~n", [Plane#plane.flight_number, LandingStrip#landing_strip.id]),
     % Mark the landing strip as occupied
+    gen_server:cast(self(), {make_landing, Plane, LandingStrip, From}),
     {reply, ok, LandingStrip};
     %% ------------ %%
 
@@ -189,8 +194,13 @@ handle_call(open_landing_strip, _From, closed) ->
 %%   - If the landing strip is occupied, we need to return with a cannot_land message so the plane can retry later
 %%
 %% ------------ %%
-handle_call({permission_to_land, Plane = #plane{}}, _From, LandingStrip) ->
-    {reply, LandingStrip, LandingStrip};
+handle_call({permission_to_land, Plane = #plane{}}, _From, LandingStrip = #landing_strip{free = true}) ->
+    LandingStripOccupied = LandingStrip#landing_strip{free=false},
+    {reply, LandingStrip, LandingStripOccupied};
+
+handle_call({permission_to_land, Plane = #plane{}}, _From, LandingStrip = #landing_strip{free = false}) ->
+    io:format("[TOWER] Plane ~p asked for landing - Landing strip occupied.~n", [Plane]),
+    {reply, cannot_land, LandingStrip};
 
 %% ------------ %%
 
